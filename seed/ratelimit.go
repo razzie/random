@@ -12,7 +12,7 @@ func RateLimit(seeder Seeder, limit int, timeframe time.Duration) <-chan uint64 
 	go func() {
 		throttle := time.NewTicker(timeframe / time.Duration(limit))
 		for ; true; <-throttle.C {
-			seed, err := seeder()
+			seed, err := seeder.safeCall()
 			if err != nil {
 				log.Print("seeder error:", err)
 				continue
