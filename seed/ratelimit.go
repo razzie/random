@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"log"
 	"time"
 )
 
@@ -9,16 +10,15 @@ func RateLimit(seeder Seeder, limit int, timeframe time.Duration) <-chan uint64 
 	ch := make(chan uint64, 1)
 
 	go func() {
-		ticker := time.NewTicker(timeframe)
-		for ; true; <-ticker.C {
-			for i := 0; i < limit; i++ {
-				seed, err := seeder()
-				if err != nil {
-					continue
-				}
-
-				ch <- seed
+		throttle := time.NewTicker(timeframe / time.Duration(limit))
+		for ; true; <-throttle.C {
+			seed, err := seeder()
+			if err != nil {
+				log.Print("seeder error:", err)
+				continue
 			}
+
+			ch <- seed
 		}
 	}()
 
