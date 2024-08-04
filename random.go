@@ -1,39 +1,44 @@
 package random
 
 import (
-	"fmt"
+	"errors"
+	"sync"
 )
+
+var ErrFeedClosed = errors.New("feed closed")
+
+type CancelFunc func()
 
 // Feed is a channel that can be used to receive random uint64 values
 type Feed <-chan uint64
 
-// NewFeed returns a new Feed and a function that is used to close it
-func NewFeed(seed <-chan uint64) (Feed, func()) {
-	rf := make(chan uint64, 0)
-	end := make(chan struct{}, 0)
+// NewFeed returns a new Feed and its cancel function
+func NewFeed(seed <-chan uint64) (Feed, CancelFunc) {
+	feed := make(chan uint64)
+	cancelChan := make(chan struct{})
 
 	go func() {
 		source := NewXor64Source(<-seed)
-		defer close(rf)
+		defer close(feed)
 
 		for {
 			select {
-			case <-end:
+			case <-cancelChan:
 				return
-			case rf <- source.Uint64():
+			case feed <- source.Uint64():
 			}
 
 			select {
-			case <-end:
+			case <-cancelChan:
 				return
-			case rf <- source.Uint64():
+			case feed <- source.Uint64():
 			case s := <-seed:
 				source.Seed(s)
 			}
 		}
 	}()
 
-	return rf, func() { end <- struct{}{} }
+	return feed, sync.OnceFunc(func() { close(cancelChan) })
 }
 
 func (f Feed) Read(p []byte) (n int, err error) {
@@ -44,7 +49,7 @@ func (f Feed) Read(p []byte) (n int, err error) {
 			var ok bool
 			val, ok = <-f
 			if !ok {
-				err = fmt.Errorf("channel closed")
+				err = ErrFeedClosed
 				return
 			}
 			pos = 7
